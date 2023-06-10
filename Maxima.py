@@ -8,10 +8,8 @@ import struct
 
 send_lock = threading.Lock()
 
-gear = "p"  # 
-rpm = 750  # RPM 
+gear = 64  # 
 speed = 0 # mp/h
-engtemp = 100
 lights = 0 # dahs lights
 outside_temp = 72 # Farenheight - INACCURATE, FIX
 
@@ -26,17 +24,66 @@ cc_active = False
 cc_speed = 50 # Set CC Speed
 cc_speed_set = True # Is the speed set? (Yellow icon if not)
 
+# Door status
+fl_open = False
+fr_open = False
+rl_open = False
+rr_open = False
+trunk_open = False
+
+# Power Steering
+ps_light = False
+
+# LDA, BSM, AEB
+aeb_enabled = True
+aeb_light = False
+lda_enabled = True
+bsm_enabled = True
+lda_active = False
+bsm_active = False
+
+# Sonar Sensors
+fl_sensor_dist = 0x4
+fc_sensor_dist = 0x2
+fr_sensor_dist = 0x4
+rl_sensor_dist = 0x4
+rc_sensor_dist = 0x2
+rr_sensor_dist = 0x4
+
+# Engine
+mil = False
+rpm = 750  # RPM 
+engtemp = 100
+
+# TC, ABS, Brake
+brake_light = False
+tc_status = 0x0 # 0x0 = On & Inactive, 0x1 = On & Active (Blinking), 0x2 = Off
+abs_light = False
+
+# Lights
+parking_lights = True
+fog_lights = False
+left_directional = False
+right_directional = False
+high_beam = False
+
 # Define the messages for 20ms interval
 messages_20ms = [
-    (0x180, [random.randint(0,255), 0, 0, 0, 0, 0, 0, 0]),
+    # Index
+    # 0 RPM
+    (0x180, [0, 0, 0, 0, 0, 0, 0, 0]),
 
 ]
 
 # Define the messages for 100ms interval
 messages_100ms = [
-    (0x2a, [0, 0, 0, 0, 0, 0, 0, 0]), # airbag
-    (0x284, [0, 0x0C, 0, 0, 30, 0x40, 0xFF, 0x40]), # speed
-    (0x2b1, [0, 0, 0, 0, 0, 0, 0, 0]), # ordered: CC, blindspot/LDA/AEB alert, blindspot/lda/AEB light, null, null, AEB beeping, null, null
+    # Index
+
+    # 0 Airbag
+
+    # 1 Speed
+
+    # 2 Cruise Control, Blindspot/LDA/AEB (2b1)
     # start of 2b1
     # first 3:
     # 000 = no cc
@@ -51,7 +98,6 @@ messages_100ms = [
     # 0100 = one bar of distance
     # 1000 = two bars
     # 1100 = three bars, cc icon
-
     # second byte 
     # 0b00000100 = blinking blind spot alert
     # 0b00001000 = ^
@@ -60,7 +106,6 @@ messages_100ms = [
     # 0b01000000 = grey car icon on cruise control side
     # 0b10000000 = blinking orange car icon
     # 0b11110000 = AEB Alert
-
     # third byte
     # 00000001 = AEB light (1 = on)
     # 00000010 = AEB light slow blink
@@ -68,7 +113,6 @@ messages_100ms = [
     # 00001000 = grey blindspot icon slow blink
     # 00010000 = grey LDA icon
     # 00100000 = grey LDA icon slow blink
-
     # sixth byte
     # 00100000 = continuous beep
     # 01000000 = fast short beeps
@@ -77,7 +121,7 @@ messages_100ms = [
     # 11100000 = two short beeps
     # end of 2b1
 
-    (0x385, [0, 0b00000010, fr_pressure*4, fl_pressure*4, rr_pressure*4, rl_pressure*4, 0xff, 0]), # tire pressures bytes: null, makes it yellow, FR, FL, RR, RL, sensor status, avg front/ rear
+    # 3 Tire Pressures (385)
     # start of 385
     # second byte (makes tires yellow)
     # 0b00000001 = rear left low
@@ -90,14 +134,20 @@ messages_100ms = [
     # sixth byte (rear left)
     # end of 385
 
-    (0x421, [gear, 0, 0, 0, 0, 0, 0, 0]), # gear indicator
-    (0x354, [0, 0, 0, 0, 0, 0, 0, 0]), # abs, tc, brake
-    (0x5e4, [0, 0, 0, 0, 0, 0, 0, 0]), # power steering
-    (0x358, [0, 0, 0, 0, 0, 0, 0, 0]), # tpms light, oil press.
-    (0x54c, [0, 0, 0, 0, 0, 0, 0, 0]), # outside temp
-    (0x551, [0, 0, 0, 0, 0, 0, 0, 0]), # cruise control, eng temp, mil
-    (0x60d, [0, 0, 0, 0, 0, 0, 0, 0]), # lights, door warnings
-    #start of 60d
+    # 4 Gear Indicator
+
+    # 5 ABS, TC, Brake
+
+    # 6 Power Steering
+
+    # 7 TPMS Light, Oil Pressure
+
+    # 8 Outside Temp
+
+    # 9 Cruise Control, Engine Temp, MIL
+
+    # 10 Outside Light Status, Door Status
+    # 0x60d
     # first byte
     # 0b00000100 = parking lights icon
     # 0b00001000 = driver door open
@@ -109,10 +159,9 @@ messages_100ms = [
     # 0b00001000 = tire pressure low alert
     # 0b00010000 = ^
     # 0b00
+    # /0x60d
 
-    # end of 60d 
-
-    (0x351, [0, 0,0,0,0,0b00000000,0b00001000, 0]), # errors
+    # 11 Errors (351)
     # start of 351
     # 6th byte
     # 00000001 = "push brake and start switch to drive"
@@ -132,13 +181,13 @@ messages_100ms = [
     # 7th byte is beeping i didnt bother decoding it
     # end of 351
 
-    (0x5b0, [0b00000000, 0,0,0,0,0b00000000,0b00000000, 0]), 
+    # 12 Sport Mode
     # start of 5b0
     # first byte
     # 00000001 = sport mode active
     # end of 5b0
 
-    (0x57a, [0b10000000,0x22 ,0x44,0x44,0,0b00000000,0b00000000, 0]),
+    # 13 Parking Sensors/ SONAR (57a)
     # start of 57a
     # first byte (sonar message)
     # 0b10000000 = sonar shows on cluster
@@ -155,9 +204,23 @@ messages_100ms = [
     # fourth byte (front left + right side sensors)
     # see sensor values
     # sixth bit (right side distance reading)
-    #
-    # 
     # end of 57a
+
+    (0x2a, [0, 0, 0, 0, 0, 0, 0, 0]), # airbag
+    (0x284, [0, 0, 0, 0, 0, 0, 0, 0]), # speed
+    (0x2b1, [0, 0, 0, 0, 0, 0, 0, 0]), # ordered: CC, blindspot/LDA/AEB alert, blindspot/lda/AEB light, null, null, AEB beeping, null, null
+    (0x385, [0, 0b00000000, fr_pressure*4, fl_pressure*4, rr_pressure*4, rl_pressure*4, 0xff, 0]), # tire pressures bytes: null, makes it yellow, FR, FL, RR, RL, sensor status, avg front/ rear
+    (0x421, [gear, 0, 0, 0, 0, 0, 0, 0]), # gear indicator
+    (0x354, [0, 0, 0, 0, 0, 0, 0, 0]), # abs, tc, brake
+    (0x5e4, [0, 0, 0, 0, 0, 0, 0, 0]), # power steering
+    (0x358, [0, 0, 0, 0, 0, 0, 0, 0]), # tpms light, oil press.
+    (0x54c, [0, 0, 0, 0, 0, 0, 0, 0]), # outside temp
+    (0x551, [0, 0, 0, 0, 0, 0, 0, 0]), # cruise control, eng temp, mil
+    (0x60d, [0, 0, 0, 0, 0, 0, 0, 0]), # lights, door warnings
+    (0x351, [0, 0,0,0,0,0b00000000,0b00001000, 0]), # errors
+    (0x5b0, [0b00000000, 0,0,0,0,0b00000000,0b00000000, 0]), # sport mode
+    (0x57a, [0b10000000,0x22 ,0x44,0x44,0,0b00000000,0b00000000, 0]), # sonar
+    
 
 ]
 def send_messages_20ms(bus):
@@ -168,11 +231,6 @@ def send_messages_20ms(bus):
 
             # Acquire the lock before sending a message
             send_lock.acquire()
-
-            #RPM
-            value = padhexa(hex(int(max(min(rpm, 8000),0)) * 8))
-            messages_20ms[0][1][0] = int(value[2:4], 16)
-            messages_20ms[0][1][1] = int(value[4:6], 16)
 
             #Send message
             message = can.Message(arbitration_id=message_id, data=data, is_extended_id=False)
@@ -197,57 +255,26 @@ def send_messages_100ms(bus):
             # Acquire the lock before sending a message
             send_lock.acquire()
 
-            # Speed
-            value = padhexa(hex(int(speed) * 158))
-            messages_100ms[1][1][4] = int(value[2:4], 16)
-            messages_100ms[1][1][5] = int(value[4:6], 16)
+            
 
             # CC, AEB, LDA
 
-            messages_100ms[3][1][0] = random.randint(0,255)
-
+            messages_100ms[3][1][2] = int(fr_pressure*4)
+            messages_100ms[3][1][3] = int(fl_pressure*4)
+            messages_100ms[3][1][4] = int(rr_pressure*4)
+            messages_100ms[3][1][5] = int(rl_pressure*4)
 
             # Lights
             messages_100ms[5][1][4] = 0b00000000 #tracctrl_blink, tc_off, tc+tc_off_solid, n, abs, n, brake, n
             if is_bit_set(lights,2):
-                messages_100ms[5][1][4] += 2
+                messages_100ms[5][1][4] += 2 #(brake)
             if is_bit_set(lights,10):
-                messages_100ms[5][1][4] += 8
+                messages_100ms[5][1][4] += 8 #(abs)
             if is_bit_set(lights,4):
-                messages_100ms[5][1][4] += 128
+                messages_100ms[5][1][4] += 128 #(tracctrl_blink)
 
 
-            # gear
-            match gear:
-                case 'p':
-                    messages_100ms[4][1][0] = 8 # Park
-                case b'\x00':
-                    messages_100ms[4][1][0] = 16 # Reverse
-                case b'\x01':
-                    messages_100ms[4][1][0] = 24 # Neutral
-                case "d":
-                    messages_100ms[4][1][0] = 32 # Drive
-                case "ds":
-                    messages_100ms[4][1][0] = 40 # Drive Sport
-                case "l":
-                    messages_100ms[4][1][0] = 48 # Low
-                case b'\x02':
-                    messages_100ms[4][1][0] = 64 # 1st gear
-                case b'\x03':
-                    messages_100ms[4][1][0] = 72 # 2nd gear
-                case b'\x04':
-                    messages_100ms[4][1][0] = 80 # 3rd gear
-                case b'\x05':
-                    messages_100ms[4][1][0] = 88 # 4th gear
-                case b'\x06':
-                    messages_100ms[4][1][0] = 96 # 5th gear
-                case b'\x07':
-                    messages_100ms[4][1][0] = 104 # 6th gear
-                case b'\x08':
-                    messages_100ms[4][1][0] = 112 # 7th gear
-                case b'\x09':
-                    messages_100ms[4][1][0] = 120 # 8th gear (works on cluster, not with beamng)
-
+            
             # Outside Temp
             # 170 = 112f
             # 128 = 74f
@@ -256,6 +283,12 @@ def send_messages_100ms(bus):
 
             # Engine Temp
             messages_100ms[9][1][0] = max(int(engtemp*1.4), 0)
+
+            # Sonar
+            messages_100ms[13][1][1] = (fc_sensor_dist*16)+rc_sensor_dist
+            messages_100ms[13][1][2] = rl_sensor_dist+(rr_sensor_dist*16)
+            messages_100ms[13][1][3] = (fl_sensor_dist*16)+fr_sensor_dist
+            print(messages_100ms[13][1][1])
 
             # Send message
             message = can.Message(arbitration_id=message_id, data=data, is_extended_id=False)
@@ -289,7 +322,6 @@ def receive_messages(bus):
         message = bus.recv()
         #print("Received message:", message)
 
-last_speed_value = 0
 
 def padhexa(s):
     return '0x' + s[2:].zfill(4)
@@ -307,6 +339,12 @@ def connect_to_game_socket():
         global gear
         global engtemp
         global lights
+        global messages_100ms
+        global messages_20ms
+        global fl_pressure
+        global fr_pressure
+        global rl_pressure
+        global rr_pressure
         # Receive data.
         data, _ = sock.recvfrom(256)
 
@@ -314,7 +352,7 @@ def connect_to_game_socket():
             break  # Lost connection
 
         # Unpack the data.
-        outgauge_pack = struct.unpack('I4sH2c7f2I3f16s16si', data)
+        outgauge_pack = struct.unpack('I4sH2c7f2I7f16s16si', data)
         time_value = outgauge_pack[0]
         car = outgauge_pack[1]
         flags = outgauge_pack[2]
@@ -331,15 +369,60 @@ def connect_to_game_socket():
         throttle = outgauge_pack[14]
         brake = outgauge_pack[15]
         clutch = outgauge_pack[16]
-        display1 = outgauge_pack[17]
-        display2 = outgauge_pack[18]
+        #print("Clutch: " + str(clutch))
+        fl_pressure = outgauge_pack[17]
+        fr_pressure = outgauge_pack[18]
+        rl_pressure = outgauge_pack[19]
+        rr_pressure = outgauge_pack[20]
+        display1 = outgauge_pack[21]
+        display2 = outgauge_pack[22]
+        #print("FL: " + str(fl_pressure))
+        #print("FR: " + str(fr_pressure))
+        #print("RL: " + str(rl_pressure))
+        #print("RR: " + str(rr_pressure))
 
 
-        # Add your code here to update other variables if needed
-        # For example:
-        # speed_kph = speed * 3.6  # Convert speed to km/h
-        # fuel_percentage = fuel * 100  # Convert fuel to percentage
+        # Speed
+        value = padhexa(hex(int(speed * 158)))
+        messages_100ms[1][1][4] = int(value[2:4], 16)
+        messages_100ms[1][1][5] = int(value[4:6], 16)
 
+        value = padhexa(hex(int(max(min(rpm, 8000),0)) * 8))
+        messages_20ms[0][1][0] = int(value[2:4], 16)
+        messages_20ms[0][1][1] = int(value[4:6], 16)
+        
+        # gear
+        match gear:
+            case 'p':
+                messages_100ms[4][1][0] = 8 # Park
+            case b'\x00':
+                messages_100ms[4][1][0] = 16 # Reverse
+            case b'\x01':
+                messages_100ms[4][1][0] = 24 # Neutral
+            case "d":
+                messages_100ms[4][1][0] = 32 # Drive
+            case "ds":
+                messages_100ms[4][1][0] = 40 # Drive Sport
+            case "l":
+                messages_100ms[4][1][0] = 48 # Low
+            case b'\x02':
+                messages_100ms[4][1][0] = 64 # 1st gear
+            case b'\x03':
+                messages_100ms[4][1][0] = 72 # 2nd gear
+            case b'\x04':
+                messages_100ms[4][1][0] = 80 # 3rd gear
+            case b'\x05':
+                messages_100ms[4][1][0] = 88 # 4th gear
+            case b'\x06':
+                messages_100ms[4][1][0] = 96 # 5th gear
+            case b'\x07':
+                messages_100ms[4][1][0] = 104 # 6th gear
+            case b'\x08':
+                messages_100ms[4][1][0] = 112 # 7th gear
+            case b'\x09':
+                messages_100ms[4][1][0] = 120 # 8th gear (works on cluster, not with beamng)
+
+        #print(fr_pressure)
     # Close the socket connection
     sock.close()
 
@@ -352,7 +435,6 @@ bus = can.interface.Bus(channel='com12', bustype='seeedstudio', bitrate=500000)
 send_thread_20ms = threading.Thread(target=send_messages_20ms, args=(bus,))
 send_thread_100ms = threading.Thread(target=send_messages_100ms, args=(bus,))
 testing_thread_5s = threading.Thread(target=testing_5s, args=(bus,))
-
 receive_thread = threading.Thread(target=receive_messages, args=(bus,))
 game_socket_thread = threading.Thread(target=connect_to_game_socket)
 
